@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Linting Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Run Ruff Lint Check
+        run: ruff check .
+
+      - name: Run Ruff Format Check
+        run: ruff format --check .
+
+  test:
+    name: Test Suite (Python ${{ matrix.python-version }})
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          pip install -e .
+
+      - name: Execute Tests with Pytest & Coverage
+        run: |
+          pytest --cov=src/nexusflow --cov-report=xml --cov-report=term-missing --cov-fail-under=85 -v
+
+      - name: Publish Step Summary
+        if: always()
+        run: |
+          echo "### 🧪 Test Run Results (Python ${{ matrix.python-version }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: Completed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Runner OS**: ${{ runner.os }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: \`${{ github.ref }}\`" >> $GITHUB_STEP_SUMMARY
